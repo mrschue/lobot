@@ -104,6 +104,9 @@ venv.bak/
 keys/
 *.pem
 
+# lobot deploy
+deploy/*
+
 # nohup dump
 nohup.out
 
