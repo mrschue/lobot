@@ -104,5 +104,8 @@ venv.bak/
 keys/
 *.pem
 
+# nohup dump
+nohup.out
+
 # mypy
 .mypy_cache/
