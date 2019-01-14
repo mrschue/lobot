@@ -100,5 +100,8 @@ venv.bak/
 # mkdocs documentation
 /site
 
+# aws keys
+.keys/*
+
 # mypy
 .mypy_cache/
