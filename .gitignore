@@ -101,7 +101,8 @@ venv.bak/
 /site
 
 # aws keys
-.keys/*
+keys/
+*.pem
 
 # mypy
 .mypy_cache/
