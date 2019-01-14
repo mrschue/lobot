@@ -147,6 +147,16 @@ def start_instance(instance, waiting_periods=7):
         return response
 
 def stop_instance(instance):
+    confirm_prompt =     {
+        'type': 'confirm',
+        'message': 'Do you really want to stop \"'+instance["Name"]+'\"?',
+        'name': 'stop',
+        'default': False,
+    }
+    chosen_confirmation = prompt(confirm_prompt)["stop"]
+    if not chosen_confirmation:
+        print(" ----> Canceling.")
+        return 
     if instance["State"] in ("stopped", "stopping"):
         print("------> Instance is already stopped or stopping.")
     else:
@@ -285,12 +295,50 @@ def deploy(instance):
             return
         key_name = instance["KeyName"]
         key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
-        command = ["scp", "-i", key_path, "-r", deploy_path, "ec2-user@"+instance["PublicIpAddress"]+":deploy/"]
+        command = ["scp", "-i", key_path, "-r", deploy_path+".", "ec2-user@"+instance["PublicIpAddress"]+":lobot/deploy/"]
+        if os.path.exists(key_path):
+            ls_command = ["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "ls", "-ll", "~/lobot/deploy"]
+            ls_returncode = subprocess.call(ls_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if ls_returncode == 2:
+                return_code = subprocess.call(["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "mkdir", "~/lobot", ";", "mkdir", "~/lobot/deploy"])
+            if subprocess.call(command) == 0:
+                print("Copied to \"~/lobot/deploy\" on remote machine.")
+        else:
+            raise ValueError("Key"+key_name+".pem is not available in my keys folder")
+
+
+def fetch(instance):
+    fetch_path = os.path.dirname(os.path.realpath(__file__))+"/fetch/"
+    key_name = instance["KeyName"]
+    key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
+    command = ["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "ls", "-ll", "~/lobot/fetch"]
+    if os.path.exists(key_path):
+        print("Output of \"ls -ll ~/lobot/fetch\" on remote machine:")
+        return_code = subprocess.call(command)
+        if return_code == 2:
+            return_code = subprocess.call(["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "mkdir", "~/lobot", ";", "mkdir", "~/lobot/fetch"])
+            print("\"~/lobot/fetch\" folder created remotely, is empty")
+            return
+    else:
+        raise ValueError("Key"+key_name+".pem is not available in my keys folder")
+    confirm_prompt =     {
+        'type': 'confirm',
+        'message': 'Do you want to copy the content of the remote \"~/lobot/fetch\" folder to the local machine?',
+        'name': 'fetch',
+        'default': False,
+    }
+    chosen_confirmation = prompt(confirm_prompt)["fetch"]
+    if chosen_confirmation:
+        if not os.path.exists(fetch_path):
+            print("No \"fetch\" folder in the script's directory \""+os.path.dirname(os.path.realpath(__file__)))
+            return
+        command = ["scp", "-i", key_path, "-r", "ec2-user@"+instance["PublicIpAddress"]+":lobot/fetch/.", fetch_path]
         if os.path.exists(key_path):
             subprocess.call(command)
         else:
             raise ValueError("Key"+key_name+".pem is not available in my keys folder")
-
+     
+   
 def ask_instance(instances):
         sorted_list = sorted(instances, key=lambda x: x["State"])
         choices = [inst["InstanceId"]+" :: ("+inst["State"]+", "+inst["Name"]+")" for inst in sorted_list]
@@ -315,6 +363,11 @@ if __name__ == "__main__":
         print("No \"keys\" folder. Creating one ...")
         os.mkdir(key_path)
         create_folder = True
+    fetch_path = os.path.dirname(os.path.realpath(__file__))+"/fetch"
+    if not os.path.isdir(fetch_path):
+        print("No \"fetch\" folder. Creating one ...")
+        os.mkdir(fetch_path)
+        created_folder = True
     deploy_path = os.path.dirname(os.path.realpath(__file__))+"/deploy"
     if not os.path.isdir(deploy_path):
         print("No \"deploy\" folder. Creating one ...")
@@ -338,10 +391,11 @@ if __name__ == "__main__":
         # Choose action
         options = []
         if chosen_instance["State"] == "running" and chosen_instance["PublicIpAddress"] is not None:
-            options.append("Stop")
             options.append("Open shell (SSH)")
             options.append("Jupyter")
             options.append("Deploy")
+            options.append("Fetch")
+            options.append("Stop")
         elif chosen_instance["State"] in ("terminated", "terminating"):
             options = ["Nothing to do here."]
         else:
@@ -366,5 +420,7 @@ if __name__ == "__main__":
             change_name(chosen_instance)
         if chosen_action == "Deploy":
             deploy(chosen_instance)
+        if chosen_action == "Fetch":
+            fetch(chosen_instance)
         time.sleep(1.5)
         input("\n\nENTER to reload script ..")
