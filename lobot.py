@@ -18,8 +18,8 @@ RECOMMENDED_INSTANCE_TYPES = {"t3.nano":"Very cheap general purpose instance, go
         "p2.xlarge":"Medium price nVidia (K80) instance, useful if g3s.xlarge is already taken.",
         "r5.2xlarge":"Medium price RAM instance, good for memory-demanding tasks, e.g. preprocessing, expansion/reduction workflows. Has 64GB RAM.",
         "p3.2xlarge":"High price nVidia (V100) instance, good for demanding GPU tasks.",
-        "r5.12xlarge":"High price RAM instance, good for extremely memory-demanding tasks. Has 384GB RAM."}
-        "c5.18xlarge":"High price CPU instance (vCPU=72), good for highly parallel non-GPU tasks, e.g. hyperparameter-tuning on CPU models.",
+        "r5.12xlarge":"High price RAM instance, good for extremely memory-demanding tasks. Has 384GB RAM.",
+        "c5.18xlarge":"High price CPU instance (vCPU=72), good for highly parallel non-GPU tasks, e.g. hyperparameter-tuning on CPU models."}
 
 
 def check_port(port):
