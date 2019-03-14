@@ -425,7 +425,7 @@ def fetch(instance):
         if not os.path.exists(fetch_path):
             print("No \"fetch\" folder in the script's directory \""+os.path.dirname(os.path.realpath(__file__)))
             return
-        command = ["scp", "-i", key_path, "-r", AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"]+":lobot/fetch/*", fetch_path]
+        command = ["scp", "-i", key_path, "-r", AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"]+":lobot/fetch/", fetch_path]
         if os.path.exists(key_path):
             subprocess.call(command)
         else:
