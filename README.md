@@ -1,7 +1,7 @@
 # lobot
 Lobot is a cloud helper for **Amazon Web Services (AWS)** written for Python 3.
 
-It provides an interactive CLI interface to conveniently manage your Linux-based EC2 instances and perform actions such as
+It provides an interactive CLI to conveniently manage your Linux-based EC2 instances and perform actions such as
 * Start instance
 * Stop instance
 * Change instance type
