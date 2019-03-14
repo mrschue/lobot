@@ -1,5 +1,5 @@
 # lobot
-Lobot is a cloud helper for *Amazon Web Services (AWS)*.
+Lobot is a cloud helper for **Amazon Web Services (AWS)**.
 
 It provides an interactive CLI interface to conveniently manage your Linux-based EC2 instances and perform actions such as
 * Start instance
