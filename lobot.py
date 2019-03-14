@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
 import json
+from PyInquirer import style_from_dict, Token, prompt
+from prettytable import PrettyTable
 import os
 import subprocess
 import boto3
@@ -21,7 +23,7 @@ USERNAME_TO_AMI = {"ec2-user": "For Amazon Linux 2, Amazon Linux AMI, Fedora AMI
 
 # Attributes lobot will fetch from the AWS database
 # If you want the image-name displayed, add "ImageName"
-STANDARD_ATTRIBUTES = ["Name", "KeyName", "InstanceId", "InstanceType", "PublicIpAddress", "Uptime", "State", "AvailabilityZone"]#, "ImageName"]
+STANDARD_ATTRIBUTES = ["Name", "KeyName", "InstanceId", "InstanceType", "PublicIpAddress", "Uptime", "State"]#, "AvailabilityZone"]#, "ImageName"]
 
 # Curated recommended instance types. Modify for your usecase.
 RECOMMENDED_INSTANCE_TYPES = {"t3.nano":"Very cheap general purpose instance, good for testing workflows.",
@@ -440,9 +442,7 @@ def ask_instance(instances):
             'message': 'Choose instance, change region, or change SSH username:',
             'choices': choices
         }
-        answers = prompt(instance_prompt)
-        answer = answers['instance'].split(" :: ")[0]
-        print(answer)
+        answer = prompt(instance_prompt)['instance'].split(" :: ")[0]
         return answer
 
 def change_region(current_region_name):
@@ -463,9 +463,21 @@ def change_region(current_region_name):
     chosen_region = prompt(region_prompt)['region'].split("  -  ")[0]
     return chosen_region
 
+def detailed_info(instance, region_name):
+    ec2 = boto3.client("ec2", region_name=region_name)
+    current_info = ec2.describe_instances(InstanceIds=[instance["InstanceId"]])["Reservations"][0]["Instances"][0]
+    relevant_info = {}
+    table = PrettyTable(["Key", "Value"])
+    relevant_info["AMI Id"] = current_info["ImageId"]
+    relevant_info["AMI Name"] = imageid_to_name(relevant_info["AMI Id"])
+    relevant_info["Availability Zone"] = current_info["Placement"]["AvailabilityZone"]
+    relevant_info["Number of CPU cores"] = current_info["CpuOptions"]["CoreCount"]
+    print("")
+    for info_name, info_content in relevant_info.items():
+        table.add_row([info_name, info_content])
+    print(table)
+
 if __name__ == "__main__":
-    from PyInquirer import style_from_dict, Token, prompt
-    from prettytable import PrettyTable
 
     # If not specified, takes default configured region.
     client_region_name = boto3.client("ec2").meta.region_name
@@ -514,13 +526,14 @@ if __name__ == "__main__":
                     chosen_instance = inst
             # Choose action
             options = []
+            options.append("Details")
             instance_name = chosen_instance["Name"]
+            deploy_option_name = "Deploy data to \""+str(instance_name)+"\""
+            fetch_option_name= "Fetch data from \""+str(instance_name)+"\""
             if chosen_instance["State"] == "running" and chosen_instance["PublicIpAddress"] is not None:
                 options.append("Open shell (SSH)")
                 options.append("Jupyter")
-                deploy_option_name = "Deploy data to \""+str(instance_name)+"\""
                 options.append(deploy_option_name)
-                fetch_option_name= "Fetch data from \""+str(instance_name)+"\""
                 options.append(fetch_option_name)
                 options.append("Stop")
             elif chosen_instance["State"] in ("terminated", "terminating"):
@@ -549,5 +562,7 @@ if __name__ == "__main__":
                 deploy(chosen_instance)
             if chosen_action == fetch_option_name:
                 fetch(chosen_instance)
+            if chosen_action == "Details":
+                detailed_info(chosen_instance, region_name=client_region_name)
         time.sleep(0.5)
         input("\n\nENTER to reload script ..")
