@@ -8,9 +8,22 @@ from botocore.exceptions import ClientError
 import datetime
 import time
 import socket
-from shutil import get_terminal_size
 
-STANDARD_ATTRIBUTES = ["Name", "KeyName", "InstanceId", "InstanceType", "PublicIpAddress", "Uptime", "State", "AvailabilityZone"]
+# If you are using only Amazon Linux Images, you do not need to change this. 
+# https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AccessingInstancesLinux.html):
+# Change if you want to change the Default
+AWS_REMOTE_USERNAME = "ec2-user"
+
+USERNAME_TO_AMI = {"ec2-user": "For Amazon Linux 2, Amazon Linux AMI, Fedora AMI, Suse AMI",
+                  "ubuntu": "For Ubuntu AMI",
+                  "centos": "For Centos AMI",
+                  "admin": "For Debian AMI"}
+
+# Attributes lobot will fetch from the AWS database
+# If you want the image-name displayed, add "ImageName"
+STANDARD_ATTRIBUTES = ["Name", "KeyName", "InstanceId", "InstanceType", "PublicIpAddress", "Uptime", "State", "AvailabilityZone"]#, "ImageName"]
+
+# Curated recommended instance types. Modify for your usecase.
 RECOMMENDED_INSTANCE_TYPES = {"t3.nano":"Very cheap general purpose instance, good for testing workflows.",
         "t3.large":"Cheap general purpose instance, good for smaller tasks, e.g. mild preprocessing.",
         "c5.2xlarge":"Medium price CPU instance (vCPU=8), good for not-massively parallel tasks, e.g. small keras models, sklearn machine learning.",
@@ -19,7 +32,31 @@ RECOMMENDED_INSTANCE_TYPES = {"t3.nano":"Very cheap general purpose instance, go
         "r5.2xlarge":"Medium price RAM instance, good for memory-demanding tasks, e.g. preprocessing, expansion/reduction workflows. Has 64GB RAM.",
         "p3.2xlarge":"High price nVidia (V100) instance, good for demanding GPU tasks.",
         "r5.12xlarge":"High price RAM instance, good for extremely memory-demanding tasks. Has 384GB RAM.",
-        "c5.18xlarge":"High price CPU instance (vCPU=72), good for highly parallel non-GPU tasks, e.g. hyperparameter-tuning on CPU models."}
+        "c5.9xlarge":"High price CPU instance (vCPU=36), good for highly parallel non-GPU tasks, e.g. hyperparameter-tuning on CPU models."}
+
+# This dictionary maps region codes to readable region names.
+# Needs to be updated by hand:
+# https://docs.aws.amazon.com/general/latest/gr/rande.html
+REGION_TO_READABLE_NAME = {
+        "us-east-1": "US East (N. Virginia)",
+        "us-east-2": "US East (Ohio)",
+        "us-west-1": "US West (N. California)",
+        "us-west-2": "US West (Oregon)",
+        "ap-south-1": "Asia Pacific (Mumbai)",
+        "ap-northeast-3": "Asia Pacific (Osaka Local)",
+        "ap-northeast-2": "Asia Pacific (Seoul)",
+        "ap-southeast-1": "Asia Pacific (Singapore)",
+        "ap-southeast-2": "Asia Pacific (Sydney)",
+        "ap-northeast-1": "Asia Pacific (Tokyo)",
+        "ca-central-1": "Canada (Central)",
+        "cn-north-1": "China (Beijing)",
+        "cn-northwest-1": "China (Ningxia)",
+        "eu-central-1": "EU (Frankfurt)",
+        "eu-west-1": "EU (Ireland)",
+        "eu-west-2": "EU (London)",
+        "eu-west-3": "EU (Paris)",
+        "eu-north-1": "EU (Stockholm)",
+        "sa-east-1": "South America (São Paulo)"}
 
 
 def check_port(port):
@@ -36,7 +73,7 @@ def check_port(port):
 def timedelta_hours_minutes(timedelta):
     return timedelta.days * 24 + timedelta.seconds//3600, (timedelta.seconds//60)%60
 
-def load_prices(used_instance_types):
+def load_prices(used_instance_types, region_name):
     pricing = boto3.client("pricing")
     price_map = {}
     known_instance_types = []
@@ -44,8 +81,12 @@ def load_prices(used_instance_types):
 
     for used_type in used_instance_types:
         if used_type not in known_instance_types:
+            try:
+                location_name = REGION_TO_READABLE_NAME[region_name]
+            except KeyError:
+                raise KeyError("Region "+str(region_name)+" does not have a readable name. Please check https://docs.aws.amazon.com/general/latest/gr/rande.html and update the REGION_TO_READABLE_NAME dictionary")
             filters = [{'Type' :'TERM_MATCH', 'Field':'operatingSystem', 'Value':'Linux' },
-                   {'Type' :'TERM_MATCH', 'Field':'location',        'Value':'US East (N. Virginia)'},
+                   {'Type' :'TERM_MATCH', 'Field':'location',        'Value': location_name},
                    {'Type' :'TERM_MATCH', 'Field':'instanceType',        'Value':used_type},
                    {'Type' :'TERM_MATCH', 'Field':'currentGeneration',        'Value':'Yes'}]
         product_list += [json.loads(product) for product in pricing.get_products(ServiceCode="AmazonEC2", Filters=filters)["PriceList"]]
@@ -69,7 +110,7 @@ def load_prices(used_instance_types):
         price_per_unit_in_usd = float(on_demand_info["pricePerUnit"]["USD"])
         if price_per_unit_in_usd == 0:
             continue
-        info_dict = {"pricePerUnit":price_per_unit_in_usd, "unit":price_unit, "instanceFamily":technical_info["instanceFamily"]}
+        info_dict = {"pricePerUnit (*)":price_per_unit_in_usd, "unit":price_unit, "instanceFamily":technical_info["instanceFamily"]}
         price_map[technical_info["instanceType"]] = info_dict
         known_instance_types.append(technical_info["instanceType"])
     del pricing
@@ -84,9 +125,19 @@ def merge_price_map(instances, price_map):
             print("Warning: "+str(inst["InstanceType"])+" is not known")
     return instances
 
-def get_current_instances(interesting_attributes=STANDARD_ATTRIBUTES, include_prices=True):
-    assert("InstanceType" in interesting_attributes)
+def imageid_to_name(image_id):
     ec2 = boto3.client("ec2")
+    image_info = ec2.describe_images(ImageIds=[image_id])["Images"][0]
+    image_name = image_info.get("Name", "")
+    return image_name 
+
+def get_current_instances(interesting_attributes=STANDARD_ATTRIBUTES, include_prices=True, region_name=None):
+    assert("InstanceType" in interesting_attributes)
+    if region_name is None:
+        ec2 = boto3.client("ec2")
+        region_name = ec2.meta.region_name
+    else:
+        ec2 = boto3.client("ec2", region_name=region_name)
     reservations = ec2.describe_instances()["Reservations"]
     used_types =[]
     instances = []
@@ -107,25 +158,36 @@ def get_current_instances(interesting_attributes=STANDARD_ATTRIBUTES, include_pr
             else:
                 uptime = timedelta_hours_minutes(datetime.datetime.now(datetime.timezone.utc) - inst["LaunchTime"])
             inst["Uptime"] = "{}h {}m".format(*uptime)
-        tags = inst["Tags"]
-        for tag in tags:
-            inst[tag["Key"]] = tag["Value"]
-        inst.pop("Tags", None)
+        try:
+            tags = inst["Tags"]
+            for tag in tags:
+                inst[tag["Key"]] = tag["Value"]
+            inst.pop("Tags", None)
+        except KeyError:
+            inst["Name"] = ""
+        try:
+            if "ImageName" in interesting_attributes:
+                image_id = inst["ImageId"]
+                image_name = imageid_to_name(image_id)
+                inst.pop("ImageId", None)
+                inst["ImageName"] = image_name
+        except KeyError:
+            inst["ImageName"] = ""
         placement = inst["Placement"]
         for k,v in placement.items():
             inst[k] = v
         instances[idx] = {k:v for k,v in inst.items() if k in interesting_attributes}
     if include_prices:
-        price_map = load_prices(used_types)
+        price_map = load_prices(used_types, region_name=region_name)
         instances = merge_price_map(instances, price_map)
     del ec2
-    return (instances, used_types)
+    return (instances, used_types, region_name)
 
-def start_instance(instance, waiting_periods=7):
+def start_instance(instance, region_name, waiting_periods=7):
     if instance["State"] in ("running", "pending"):
         print("No need to start this one. Maybe have some patience.")
     else:
-        ec2 = boto3.client("ec2")
+        ec2 = boto3.client("ec2", region_name=region_name)
         # Do a dryrun first to verify permissions
         response = None
         try:
@@ -133,7 +195,7 @@ def start_instance(instance, waiting_periods=7):
         except ClientError as e:
             if 'DryRunOperation' not in str(e):
                 raise
-        # Dry run succeeded, run start_instances without dryrun
+        # Dry run succeeded, run start_instances without dry run
         try:
             response = ec2.start_instances(InstanceIds=[instance["InstanceId"]], DryRun=False)
             print("START signal sent, waiting for reachability ...")
@@ -147,7 +209,7 @@ def start_instance(instance, waiting_periods=7):
         del ec2
         return response
 
-def stop_instance(instance):
+def stop_instance(instance, region_name):
     confirm_prompt =     {
         'type': 'confirm',
         'message': 'Do you really want to stop \"'+instance["Name"]+'\"?',
@@ -161,15 +223,13 @@ def stop_instance(instance):
     if instance["State"] in ("stopped", "stopping"):
         print("------> Instance is already stopped or stopping.")
     else:
-        ec2 = boto3.client("ec2")
-        # Do a dryrun first to verify permissions
+        ec2 = boto3.client("ec2", region_name=region_name)
         response = None
         try:
             ec2.stop_instances(InstanceIds=[instance["InstanceId"]], DryRun=True)
         except ClientError as e:
             if 'DryRunOperation' not in str(e):
                 raise
-        # Dry run succeeded, run start_instances without dryrun
         try:
             response = ec2.stop_instances(InstanceIds=[instance["InstanceId"]], DryRun=False)
             print("STOP signal sent, waiting for full stop. This might take a while.")
@@ -185,21 +245,21 @@ def connect_instance(instance):
     key_name = instance["KeyName"]
     key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
     if os.path.exists(key_path):
-        subprocess.call(["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"]])
+        subprocess.call(["ssh", "-i", key_path, AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"]])
     else:
-        raise ValueError("Key"+key_name+".pem is not available in my keys folder")
+        raise ValueError("Key"+key_name+".pem is not available in my 'keys' folder.")
 
 def start_jupyter(instance, local_port=8888):
-    # Check if key is available
+    # Check onif key is available
     key_name = instance["KeyName"]
     key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
     if os.path.exists(key_path):
-        output = str(subprocess.run(["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "jupyter", "notebook", "list"], stdout=subprocess.PIPE).stdout).split("\\n")[1:-1]
+        output = str(subprocess.run(["ssh", "-i", key_path, AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"], "jupyter", "notebook", "list"], stdout=subprocess.PIPE).stdout).split("\\n")[1:-1]
         if len(output) == 0:
             print("Starting jupyter server remotely...")
-            subprocess.run(["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "screen", "-dm", "bash", "-c", "\"jupyter", "notebook", "--no-browser", "--port=8889\""]) 
-            time.sleep(6)
-            output = str(subprocess.run(["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "jupyter", "notebook", "list"], stdout=subprocess.PIPE).stdout).split("\\n")[1:-1]
+            subprocess.run(["ssh", "-i", key_path, AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"], "screen", "-dm", "bash", "-c", "\"jupyter", "notebook", "--no-browser", "--port=8889\""])
+            time.sleep(3)
+            output = str(subprocess.run(["ssh", "-i", key_path, AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"], "jupyter", "notebook", "list"], stdout=subprocess.PIPE).stdout).split("\\n")[1:-1]
             print("\t ... done")
         else:
             print("Jupyter server found, did not start a new server.")
@@ -212,37 +272,68 @@ def start_jupyter(instance, local_port=8888):
             }
             jupyter_instance = prompt(server_prompt)["server"]
             remote_hostport = jupyter_instance.split("/")[2]
-            command = ["nohup", "ssh", "-i", key_path, "-N", "-L", str(local_port)+":"+remote_hostport, "ec2-user@"+instance["PublicIpAddress"]]
+            command = ["nohup", "ssh", "-i", key_path, "-N", "-L", str(local_port)+":"+remote_hostport, AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"]]
             process = subprocess.Popen(command, preexec_fn=os.setpgrp)
             print("Port forwarding PID: "+str(process.pid))
+            print(jupyter_instance.replace(str(remote_hostport), str(local_port), 1))
             print("")
-            print("\t\t\t\thttp://localhost:"+str(local_port))
         else:
             print("Local port "+str(local_port)+" is taken. Maybe you are already connected?")
     else:
         raise ValueError("Key"+key_name+".pem is not available in my keys folder")
     return output
 
+def change_remote_username():
+    global AWS_REMOTE_USERNAME
+    available_names = [k+"  -  "+v for k, v in USERNAME_TO_AMI.items()]
+    username_prompt = {
+         'type': 'list',
+         'name': 'username',
+         'message': 'Current username: '+AWS_REMOTE_USERNAME+'. Which username do you want use instead?',
+         'choices': available_names
+     }
+    chosen_name = prompt(username_prompt)["username"].split("  -  ")[0]
+    AWS_REMOTE_USERNAME = chosen_name
+
+
 def kill_jupyters(instance):
     key_name = instance["KeyName"]
     key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
     # UNFINISHED
 
-def display_instances(instances):
-    assert(len(instances) > 0)
-    keys = sorted(instances[0].keys())
-    instance_table = PrettyTable(keys)
-    instances = sorted(instances, key=lambda x: (0 if x["State"] == "running" else 1, x["State"], 1./x["pricePerUnit"]), reverse=False)
-    for instance in instances:
-        items = sorted(instance.items(), key=lambda x: x[0])
-        instance_table.add_row([v for k,v in items])
-    print("\n\n")
-    print(instance_table)
-    print("\n\n")
+def display_instances(instances, region_name):
+    print("\n")
+    if region_name is not None:
+        try:
+            location_name = REGION_TO_READABLE_NAME[region_name]
+        except KeyError:
+            raise KeyError("Region "+str(region_name)+" does not have a readable name. Please check https://docs.aws.amazon.com/general/latest/gr/rande.html and update the REGION_TO_READABLE_NAME dictionary")
+        print("Instances for region: \n\t\t"+str(region_name)+" ["+location_name+"]\n")
+    if len(instances) > 0:
+        keys = sorted(instances[0].keys())
+        instance_table = PrettyTable(keys)
+        instances = sorted(instances, key=lambda x: (0 if x["State"] == "running" else 1, x["State"]), reverse=False)
+        for instance in instances:
+            items = sorted(instance.items(), key=lambda x: x[0])
+            instance_table.add_row([v for k,v in items])
+        print(instance_table)
+        print("\t(*)\tlisted prices are for on-demand Linux (w/o SQL) in region '"+region_name+"' only.\n\t\t They might be unreliable in some cases - please confirm prices at: https://aws.amazon.com/de/ec2/pricing/on-demand/")
+        print("\n\n")
+    else:
+        print("\n\n")
+        if region_name is not None:
+            try:
+                location_name = REGION_TO_READABLE_NAME[region_name]
+            except KeyError:
+                raise KeyError("Region "+str(region_name)+" does not have a readable name. Please check https://docs.aws.amazon.com/general/latest/gr/rande.html and update the REGION_TO_READABLE_NAME dictionary")
+            print("No instances in region '"+str(region_name)+"' ["+location_name+"] available.")
+        else:
+            print("No instances in this region.")
+        print("\n\n")
 
-def change_type(instance, available_instances=RECOMMENDED_INSTANCE_TYPES):
+def change_type(instance, region_name, available_instances=RECOMMENDED_INSTANCE_TYPES):
     assert(instance["State"] == "stopped")
-    ec2 = boto3.client("ec2")
+    ec2 = boto3.client("ec2", region_name=region_name)
     choices = [k+" :: "+v for k, v in available_instances.items()]
     type_prompt = {
          'type': 'list',
@@ -253,9 +344,9 @@ def change_type(instance, available_instances=RECOMMENDED_INSTANCE_TYPES):
     chosen_type = prompt(type_prompt)["type"].split(" :: ")[0]
     ec2.modify_instance_attribute(InstanceId=instance["InstanceId"], Attribute='instanceType', Value=chosen_type)
 
-def change_name(instance):
+def change_name(instance, region_name):
     assert(instance["State"] == "stopped")
-    ec2 = boto3.client("ec2")
+    ec2 = boto3.client("ec2", region_name)
     name_prompt = {
          'type': 'input',
          'name': 'instance_name',
@@ -275,9 +366,10 @@ def change_name(instance):
         new_name_tag = {"Key":"Name", "Value":chosen_name}
         ec2.create_tags(Resources=[instance["InstanceId"]], Tags=[new_name_tag])
         print("Name should be changed now!")
-        time.sleep(1.5)
+        time.sleep(0.5)
 
 def deploy(instance):
+    print("?")
     deploy_path = os.path.dirname(os.path.realpath(__file__))+"/deploy/"
     print("\nContent of \"deploy\" folder:")
     for filename in os.listdir(deploy_path):
@@ -296,12 +388,12 @@ def deploy(instance):
             return
         key_name = instance["KeyName"]
         key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
-        command = ["scp", "-i", key_path, "-r", deploy_path+".", "ec2-user@"+instance["PublicIpAddress"]+":lobot/deploy/"]
+        command = ["scp", "-i", key_path, "-r", deploy_path+".", AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"]+":lobot/deploy/"]
         if os.path.exists(key_path):
-            ls_command = ["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "ls", "-ll", "~/lobot/deploy"]
+            ls_command = ["ssh", "-i", key_path, AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"], "ls", "-ll", "~/lobot/deploy"]
             ls_returncode = subprocess.call(ls_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if ls_returncode == 2:
-                return_code = subprocess.call(["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "mkdir", "~/lobot", ";", "mkdir", "~/lobot/deploy"])
+                return_code = subprocess.call(["ssh", "-i", key_path, AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"], "mkdir", "~/lobot", ";", "mkdir", "~/lobot/deploy"])
             if subprocess.call(command) == 0:
                 print("Copied to \"~/lobot/deploy\" on remote machine.")
         else:
@@ -309,15 +401,15 @@ def deploy(instance):
 
 
 def fetch(instance):
-    fetch_path = os.path.dirname(os.path.realpath(__file__))+"/fetch/"
+    fetch_path = "/scratch/schuem9p/fetch/"#os.path.dirname(os.path.realpath(__file__))+"/fetch/"
     key_name = instance["KeyName"]
     key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
-    command = ["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "ls", "-ll", "~/lobot/fetch"]
+    command = ["ssh", "-i", key_path, AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"], "ls", "-ll", "~/lobot/fetch"]
     if os.path.exists(key_path):
         print("Output of \"ls -ll ~/lobot/fetch\" on remote machine:")
         return_code = subprocess.call(command)
         if return_code == 2:
-            return_code = subprocess.call(["ssh", "-i", key_path, "ec2-user@"+instance["PublicIpAddress"], "mkdir", "~/lobot", ";", "mkdir", "~/lobot/fetch"])
+            return_code = subprocess.call(["ssh", "-i", key_path, AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"], "mkdir", "~/lobot", ";", "mkdir", "~/lobot/fetch"])
             print("\"~/lobot/fetch\" folder created remotely, is empty")
             return
     else:
@@ -333,28 +425,50 @@ def fetch(instance):
         if not os.path.exists(fetch_path):
             print("No \"fetch\" folder in the script's directory \""+os.path.dirname(os.path.realpath(__file__)))
             return
-        command = ["scp", "-i", key_path, "-r", "ec2-user@"+instance["PublicIpAddress"]+":lobot/fetch/.", fetch_path]
+        command = ["scp", "-i", key_path, "-r", AWS_REMOTE_USERNAME+"@"+instance["PublicIpAddress"]+":lobot/fetch/*", fetch_path]
         if os.path.exists(key_path):
             subprocess.call(command)
         else:
             raise ValueError("Key"+key_name+".pem is not available in my keys folder")
-     
-   
+
 def ask_instance(instances):
         sorted_list = sorted(instances, key=lambda x: x["State"])
-        choices = [inst["InstanceId"]+" :: ("+inst["State"]+", "+inst["Name"]+")" for inst in sorted_list]
+        choices = [inst["InstanceId"]+" :: ("+inst["State"]+", "+inst["Name"]+")" for inst in sorted_list] + ["Change region", "Change username (SSH)"]
         instance_prompt = {
             'type': 'list',
             'name': 'instance',
-            'message': 'Which instance do you want to use?',
+            'message': 'Choose instance, change region, or change SSH username:',
             'choices': choices
         }
         answers = prompt(instance_prompt)
-        return answers['instance'].split(" :: ")[0]
+        answer = answers['instance'].split(" :: ")[0]
+        print(answer)
+        return answer
+
+def change_region(current_region_name):
+    ec2 = boto3.client("ec2")
+    known_regions = [region['RegionName'] for region in ec2.describe_regions()['Regions']]
+    for region_idx, region_name in enumerate(known_regions):
+        try:
+            location_name = REGION_TO_READABLE_NAME[region_name]
+        except KeyError:
+            raise KeyError("Region "+str(region_name)+" does not have a readable name. Please check https://docs.aws.amazon.com/general/latest/gr/rande.html and update the REGION_TO_READABLE_NAME dictionary")
+        known_regions[region_idx] = region_name + "  -  " + location_name 
+    region_prompt = {
+         'type': 'list',
+         'name': 'region',
+         'message': 'Current region: '+str(current_region_name)+'. Which region do you want instead?',
+         'choices': known_regions
+     }
+    chosen_region = prompt(region_prompt)['region'].split("  -  ")[0]
+    return chosen_region
 
 if __name__ == "__main__":
     from PyInquirer import style_from_dict, Token, prompt
     from prettytable import PrettyTable
+
+    # If not specified, takes default configured region.
+    client_region_name = boto3.client("ec2").meta.region_name
 
     # Check if there is a "keys" folder. If not, create one
     print("\n")
@@ -379,49 +493,61 @@ if __name__ == "__main__":
 
     while True:
         os.system("clear")
-        print("Loading instances")
-        instances, used_types = get_current_instances()
-        print("\t ... done")
-        display_instances(instances)
-        time.sleep(2)
+        #print("Loading instances")
+        instances, used_types, client_region_name = get_current_instances(region_name=client_region_name)
+        #print("\t ... done")
+        display_instances(instances, region_name=client_region_name)
+        time.sleep(0.5)
         # Choose instance
         chosen_instance = ask_instance(instances)
-        for inst in instances:
-            if inst["InstanceId"] == chosen_instance:
-                chosen_instance = inst
-        # Choose action
-        options = []
-        if chosen_instance["State"] == "running" and chosen_instance["PublicIpAddress"] is not None:
-            options.append("Open shell (SSH)")
-            options.append("Jupyter")
-            options.append("Deploy")
-            options.append("Fetch")
-            options.append("Stop")
-        elif chosen_instance["State"] in ("terminated", "terminating"):
-            options = ["Nothing to do here."]
+        if chosen_instance == "Change region":
+            client_region_name = change_region(current_region_name=client_region_name)
+            time.sleep(1)
+            continue
+        elif chosen_instance == "Change username (SSH)":
+            client_region_name = change_remote_username()
+            time.sleep(2)
+            continue
         else:
-            options.append("Start")
-            options.append("Change type")
-            options.append("Change name")
-        time.sleep(2)
-        chosen_action = prompt({'type':"list", "name":"action", "message": "What do you want to do?", "choices":options})["action"]
-        if chosen_action == "Start":
-            response = start_instance(chosen_instance)
-        if chosen_action == "Stop":
-            response = stop_instance(chosen_instance)
-        if chosen_action == "Open shell (SSH)":
-            connect_instance(chosen_instance)
-        if chosen_action == "Jupyter":
-            process = start_jupyter(chosen_instance)
-        if chosen_action == "Kill Jupyters":
-            kill_jupyters(chosen_instance)
-        if chosen_action == "Change type":
-            change_type(chosen_instance)
-        if chosen_action == "Change name":
-            change_name(chosen_instance)
-        if chosen_action == "Deploy":
-            deploy(chosen_instance)
-        if chosen_action == "Fetch":
-            fetch(chosen_instance)
-        time.sleep(1.5)
+            for inst in instances:
+                if inst["InstanceId"] == chosen_instance:
+                    chosen_instance = inst
+            # Choose action
+            options = []
+            instance_name = chosen_instance["Name"]
+            if chosen_instance["State"] == "running" and chosen_instance["PublicIpAddress"] is not None:
+                options.append("Open shell (SSH)")
+                options.append("Jupyter")
+                deploy_option_name = "Deploy data to \""+str(instance_name)+"\""
+                options.append(deploy_option_name)
+                fetch_option_name= "Fetch data from \""+str(instance_name)+"\""
+                options.append(fetch_option_name)
+                options.append("Stop")
+            elif chosen_instance["State"] in ("terminated", "terminating"):
+                options = ["Nothing to do here."]
+            else:
+                options.append("Start")
+                options.append("Change type")
+                options.append("Change name")
+            time.sleep(2)
+            chosen_action = prompt({'type':"list", "name":"action", "message": "What do you want to do?", "choices":options})["action"]
+            if chosen_action == "Start":
+                response = start_instance(chosen_instance, region_name=client_region_name)
+            if chosen_action == "Stop":
+                response = stop_instance(chosen_instance, region_name=client_region_name)
+            if chosen_action == "Open shell (SSH)":
+                connect_instance(chosen_instance)
+            if chosen_action == "Jupyter":
+                process = start_jupyter(chosen_instance)
+            if chosen_action == "Kill Jupyters":
+                kill_jupyters(chosen_instance)
+            if chosen_action == "Change type":
+                change_type(chosen_instance, region_name=client_region_name)
+            if chosen_action == "Change name":
+                change_name(chosen_instance, region_name=client_region_name)
+            if chosen_action == deploy_option_name:
+                deploy(chosen_instance)
+            if chosen_action == fetch_option_name:
+                fetch(chosen_instance)
+        time.sleep(0.5)
         input("\n\nENTER to reload script ..")
