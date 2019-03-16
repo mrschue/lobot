@@ -1,7 +1,7 @@
 # lobot
-Lobot is a cloud helper for *Amazon Web Services (AWS)*.
+Lobot is a cloud helper for **Amazon Web Services (AWS)** written for Python 3.
 
-It provides an interactive CLI interface to conveniently manage your Linux-based EC2 instances and perform actions such as
+It provides an interactive CLI to conveniently manage your Linux-based EC2 instances and perform actions such as
 * Start instance
 * Stop instance
 * Change instance type
@@ -13,10 +13,10 @@ It provides an interactive CLI interface to conveniently manage your Linux-based
 ## SETUP ##
 You need the AWS CLI tools and some other dependencies. They can be conveniently installed via *pip*:
 ```
-pip --user install awscli
-pip --user install boto3
-pip --user install PyInquirer
-pip --user install prettytable
+pip install --user awscli
+pip install --user boto3
+pip install --user PyInquirer
+pip install --user prettytable
 ```
 
 Afterwards, you'll need to get your AWS access key and secret key. You can create
