@@ -30,4 +30,13 @@ Once you have it, execute the following instruction in a terminal and follow the
 ```
 aws configure
 ``` 
+Afterwards, just execute *lobot.py*:
+```
+./lobot.py
+```
+or 
+```
+python3 lobot.py
+```
+
 
