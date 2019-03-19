@@ -14,7 +14,7 @@ import socket
 GLOBAL_CONFIG = {}
 
 # Global dictionary that maps AWS-usernames to a description of the images that uses them.
-USERNAME_TO_AMI = {"ec2-user": "For Amazon Linux 2, Amazon Linux AMI, Fedora AMI, Suse AMI",
+USERNAME_TO_AMI = {"ec2-user": "For Amazon Linux AMI, Fedora AMI, Suse AMI",
                   "ubuntu": "For Ubuntu AMI",
                   "centos": "For Centos AMI",
                   "admin": "For Debian AMI"}
@@ -323,7 +323,8 @@ def display_instances(instances, region_name):
             items = sorted(instance.items(), key=lambda x: x[0])
             instance_table.add_row([v for k,v in items])
         print(instance_table)
-        print("\t(*)\tlisted prices are in $ and for on-demand Linux (w/o SQL) in region '"+region_name+"' only.\n\t\t They might be unreliable in some cases - please confirm prices at: https://aws.amazon.com/de/ec2/pricing/on-demand/")
+        if GLOBAL_CONFIG["load_prices"]:
+            print("\t(*)\tlisted prices are in $ and for on-demand Linux (w/o SQL) in region '"+region_name+"' only.\n\t\t They might be unreliable in some cases - please confirm prices at: https://aws.amazon.com/de/ec2/pricing/on-demand/")
         print("\n\n")
     else:
         print("\n\n")
@@ -351,7 +352,6 @@ def change_type(instance, region_name, available_instances):
     ec2.modify_instance_attribute(InstanceId=instance["InstanceId"], Attribute='instanceType', Value=chosen_type)
 
 def change_name(instance, region_name):
-    assert(instance["State"] == "stopped")
     ec2 = boto3.client("ec2", region_name)
     name_prompt = {
          'type': 'input',
@@ -473,7 +473,10 @@ def detailed_info(instance, region_name):
     relevant_info = {}
     table = PrettyTable(["Key", "Value"])
     relevant_info["AMI Id"] = current_info["ImageId"]
-    relevant_info["AMI Name"] = imageid_to_name(relevant_info["AMI Id"])
+    try:
+        relevant_info["AMI Name"] = imageid_to_name(relevant_info["AMI Id"])
+    except ClientError:
+        print("\nAMI Id could not be mapped to name ..")
     relevant_info["Availability Zone"] = current_info["Placement"]["AvailabilityZone"]
     relevant_info["Number of CPU cores"] = current_info["CpuOptions"]["CoreCount"]
     print("")
@@ -544,13 +547,14 @@ if __name__ == "__main__":
                 options.append("Jupyter")
                 options.append(deploy_option_name)
                 options.append(fetch_option_name)
+                options.append("Change name")
                 options.append("Stop")
             elif chosen_instance["State"] in ("terminated", "terminating"):
                 options = ["Nothing to do here."]
             else:
                 options.append("Start")
-                options.append("Change type")
                 options.append("Change name")
+                options.append("Change type")
             time.sleep(2)
             chosen_action = prompt({'type':"list", "name":"action", "message": "What do you want to do?", "choices":options})["action"]
             if chosen_action == "Start":
