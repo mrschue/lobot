@@ -15,6 +15,8 @@ lobot does **not** provide:
 * terminating instances
 * EBS interaction
 
+[![Demo](https://s3.amazonaws.com/lobot-media/low_fi.gif)](https://www.youtube.com/watch?v=ahaMbAlnN_0)
+
 ## SETUP ##
 You need the AWS CLI tools and some other dependencies. They can be conveniently installed via *pip*:
 ```
