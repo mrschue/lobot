@@ -44,8 +44,11 @@ python3 lobot.py
 
 ## ADDITIONAL NOTES ##
 The **Fetch/Deploy** options will transfer data from or to the remote server. 
+
 **Deploy:** transfers everything from the local *./deploy* folder to the remote *~/lobot/deploy* folder.
+
 **Fetch:** transfers everything from the remote *~/lobot/fetch* folder to the remote *./fetch* folder.
+
 
 *.* is the lobot-folder. 
 *~* is the homefolder of the corresponding remote username (e.g., *ec2-user* for Amazon Linux)
