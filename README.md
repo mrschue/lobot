@@ -4,11 +4,11 @@ Lobot is a cloud helper for **EC2** by **Amazon Web Services (AWS)**, written fo
 It provides an interactive CLI to conveniently manage your Linux-based EC2 instances and perform actions such as
 * Start instance
 * Stop instance
-* Change instance type
+* Change instance type (e.g., t3.micro -> p3.xlarge)
 * Open SSH
 * Start and connect to a Jupyter notebook server (needs to be installed on remote machine!)
 * Change instance's 'Name'-tag
-* Display other instance details
+* Display other instance details (e.g., Id of used image, availability zone)
 
 ## SETUP ##
 You need the AWS CLI tools and some other dependencies. They can be conveniently installed via *pip*:
