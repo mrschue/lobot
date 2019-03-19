@@ -46,7 +46,7 @@ The **Fetch/Deploy** options will transfer data from or to the EC2 instance.
 
 **Deploy:** transfers everything from the local *./deploy* folder to the remote *~/lobot/deploy* folder.
 
-**Fetch:** transfers everything from the remote *~/lobot/fetch* folder to the remote *./fetch* folder.
+**Fetch:** transfers everything from the remote *~/lobot/fetch* folder to the local *./fetch* folder.
 
 
 (*.* = folder of lobot.py and *~* = home-folder of remote user, e.g., */home/ec2-user/* on Amazon Linux)
