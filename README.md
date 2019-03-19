@@ -10,6 +10,11 @@ It provides an interactive CLI to conveniently manage your Linux-based EC2 insta
 * Change instance's 'Name'-tag
 * Display other instance details (e.g., Id of used image, availability zone)
 
+lobot does **not** provide:
+* launching new instances
+* terminating instances
+* EBS interaction
+
 ## SETUP ##
 You need the AWS CLI tools and some other dependencies. They can be conveniently installed via *pip*:
 ```
@@ -41,6 +46,9 @@ or
 ```
 python3 lobot.py
 ```
+If you want to SSH / transfer data, the corresponding keys need to be in your *./keys* folder with 
+permissions *400* (!).
+
 
 The **Fetch/Deploy** options will transfer data from or to the EC2 instance. 
 
