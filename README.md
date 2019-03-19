@@ -6,7 +6,7 @@ It provides an interactive CLI to conveniently manage your Linux-based EC2 insta
 * Stop instance
 * Change instance type
 * Open SSH
-* Start and connect to a Jupyter notebook server
+* Start and connect to a Jupyter notebook server (needs to be installed on remote machine!)
 * Change instance's 'Name'-tag
 * Display other instance details
 
