@@ -50,5 +50,4 @@ The **Fetch/Deploy** options will transfer data from or to the remote server.
 **Fetch:** transfers everything from the remote *~/lobot/fetch* folder to the remote *./fetch* folder.
 
 
-*.* is the lobot-folder. 
-*~* is the homefolder of the corresponding remote username (e.g., *ec2-user* for Amazon Linux)
+(*.* = folder of lobot.py and *~* homefolder of remote user, e.g., */home/ec2-user/* on Amazon Linux)
