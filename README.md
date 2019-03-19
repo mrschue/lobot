@@ -24,7 +24,7 @@ one in:
 ```
 AWS Management Console -> IAM -> Users -> %YOURNAME% -> Security credentials
 ```
-You might want to make your old key inactive.
+You might want to make your old key inactive. Also, make sure that your IAM-user has appropriate access rights to EC2.
 
 Once you have it, execute the following instruction in a terminal and follow the instructions:
 ```
