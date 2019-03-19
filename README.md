@@ -42,8 +42,7 @@ or
 python3 lobot.py
 ```
 
-## ADDITIONAL NOTES ##
-The **Fetch/Deploy** options will transfer data from or to the remote server. 
+The **Fetch/Deploy** options will transfer data from or to the EC2 instance. 
 
 **Deploy:** transfers everything from the local *./deploy* folder to the remote *~/lobot/deploy* folder.
 
