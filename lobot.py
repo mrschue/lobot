@@ -255,7 +255,7 @@ def connect_instance(instance):
     else:
         raise ValueError("Key"+key_name+".pem is not available in my 'keys' folder.")
 
-def start_jupyter(instance, local_port=8888):
+def start_jupyter(instance, local_port=8889):
     # Check onif key is available
     key_name = instance["KeyName"]
     key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
