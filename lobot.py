@@ -269,22 +269,26 @@ def start_jupyter(instance, local_port=8888):
             print("\t ... done")
         else:
             print("Jupyter server found, did not start a new server.")
-        if check_port(local_port):
-            server_prompt = {
-                'type': 'list',
-                'name': 'server',
-                'message': 'Port '+str(local_port)+' available. Connect?',
-                'choices': output
-            }
-            jupyter_instance = prompt(server_prompt)["server"]
-            remote_hostport = jupyter_instance.split("/")[2]
-            command = ["nohup", "ssh", "-i", key_path, "-N", "-L", str(local_port)+":"+remote_hostport, GLOBAL_CONFIG["aws_username"]+"@"+instance["PublicIpAddress"]]
-            process = subprocess.Popen(command, preexec_fn=os.setpgrp)
-            print("Port forwarding PID: "+str(process.pid))
-            print(jupyter_instance.replace(str(remote_hostport), str(local_port), 1))
-            print("")
-        else:
-            print("Local port "+str(local_port)+" is taken. Maybe you are already connected?")
+        one_up = 0
+        while (one_up < 3):
+            if check_port(local_port + one_up):
+                server_prompt = {
+                    'type': 'list',
+                    'name': 'server',
+                    'message': 'Port '+str(local_port + one_up)+' available. Connect?',
+                    'choices': output
+                }
+                jupyter_instance = prompt(server_prompt)["server"]
+                remote_hostport = jupyter_instance.split("/")[2]
+                command = ["nohup", "ssh", "-i", key_path, "-N", "-L", str(local_port + one_up)+":"+remote_hostport, GLOBAL_CONFIG["aws_username"]+"@"+instance["PublicIpAddress"]]
+                process = subprocess.Popen(command, preexec_fn=os.setpgrp)
+                print("Port forwarding PID: "+str(process.pid))
+                print(jupyter_instance.replace(str(remote_hostport), str(local_port + one_up), 1))
+                print("")
+                break
+            else:
+                print("Local port "+str(local_port)+" is taken. Maybe you are already connected?")
+                one_up += 1
     else:
         raise ValueError("Key"+key_name+".pem is not available in my keys folder")
     return output
@@ -407,7 +411,7 @@ def deploy(instance):
 
 
 def fetch(instance):
-    fetch_path = "/scratch/schuem9p/fetch/"#os.path.dirname(os.path.realpath(__file__))+"/fetch/"
+    fetch_path = os.path.dirname(os.path.realpath(__file__))+"/fetch/"
     key_name = instance["KeyName"]
     key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
     command = ["ssh", "-i", key_path, GLOBAL_CONFIG["aws_username"]+"@"+instance["PublicIpAddress"], "ls", "-ll", "~/lobot/fetch"]
