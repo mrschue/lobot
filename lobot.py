@@ -47,6 +47,9 @@ REGION_TO_READABLE_NAME = {
         "sa-east-1": "South America (São Paulo)"}
 
 def read_config(filepath=os.path.dirname(os.path.realpath(__file__))+"/config.cfg"):
+    """
+    Auxiliary function to parse the config files.
+    """
     config_dict = {}
     with open(filepath, "r") as config_file:
         config_content = config_file.readlines()
@@ -66,6 +69,9 @@ def read_config(filepath=os.path.dirname(os.path.realpath(__file__))+"/config.cf
     return config_dict
 
 def check_port(port):
+    """
+    Checks if a port is available for SSH forwarding.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     result = False
     try:
@@ -77,14 +83,19 @@ def check_port(port):
     return result
 
 def timedelta_hours_minutes(timedelta):
+    """
+    Formatting function for uptime.
+    """
     return timedelta.days * 24 + timedelta.seconds//3600, (timedelta.seconds//60)%60
 
 def load_prices(used_instance_types, region_name):
+    """
+    Load current EC2 price-list from AWS.
+    """
     pricing = boto3.client("pricing")
     price_map = {}
     known_instance_types = []
     product_list = []
-
     for used_type in used_instance_types:
         if used_type not in known_instance_types:
             try:
@@ -123,6 +134,9 @@ def load_prices(used_instance_types, region_name):
     return price_map
 
 def merge_price_map(instances, price_map):
+    """
+    Auxiliary function to merge prices into the table of instances.
+    """
     for idx, inst in enumerate(instances):
         info = price_map.get(inst["InstanceType"], None)
         if info is not None:
@@ -138,6 +152,10 @@ def imageid_to_name(image_id):
     return image_name
 
 def get_current_instances(interesting_attributes=STANDARD_ATTRIBUTES, include_prices=True, region_name=None):
+    """
+    Fetch all available instances as well as their interesting attributes and possibly price information for
+    the given region.
+    """
     assert("InstanceType" in interesting_attributes)
     if region_name is None:
         ec2 = boto3.client("ec2")
@@ -190,6 +208,10 @@ def get_current_instances(interesting_attributes=STANDARD_ATTRIBUTES, include_pr
     return (instances, used_types, region_name)
 
 def start_instance(instance, region_name, waiting_periods=7):
+    """
+    Sends the START signal to a stopped instance and waits for the instance to change state to 
+    'RUNNING'.
+    """
     if instance["State"] in ("running", "pending"):
         print("No need to start this one. Maybe have some patience.")
     else:
@@ -216,6 +238,10 @@ def start_instance(instance, region_name, waiting_periods=7):
         return response
 
 def stop_instance(instance, region_name):
+    """
+    Sends the stop signal to a given instance and while wait for the instance to change the state
+    to 'STOPPED'.
+    """
     confirm_prompt =     {
         'type': 'confirm',
         'message': 'Do you really want to stop \"'+instance["Name"]+'\"?',
@@ -225,7 +251,7 @@ def stop_instance(instance, region_name):
     chosen_confirmation = prompt.prompt(confirm_prompt)["stop"]
     if not chosen_confirmation:
         print(" ----> Canceling.")
-        return 
+        return
     if instance["State"] in ("stopped", "stopping"):
         print("------> Instance is already stopped or stopping.")
     else:
@@ -247,6 +273,9 @@ def stop_instance(instance, region_name):
         return response
 
 def connect_instance(instance):
+    """
+    This function tries to open an interactive SSH onto the instance.
+    """
     # Check if key is available
     key_name = instance["KeyName"]
     key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
@@ -256,6 +285,10 @@ def connect_instance(instance):
         raise ValueError("Key"+key_name+".pem is not available in my 'keys' folder.")
 
 def start_jupyter(instance, local_port=8889):
+    """
+    This function tries to SSH onto the instance, remotely start a Jupyter notebook server, and forward given
+    local port to it.
+    """
     # Check onif key is available
     key_name = instance["KeyName"]
     key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
@@ -294,6 +327,12 @@ def start_jupyter(instance, local_port=8889):
     return output
 
 def change_remote_username():
+    """
+    For interacting with the OS running on the remote, you'll need to know corresponding username.
+    Most AMIs have a specific one.
+
+    The list is curated as global variable.
+    """
     global GLOBAL_CONFIG
     available_names = [k+"  -  "+v for k, v in USERNAME_TO_AMI.items()]
     username_prompt = {
@@ -312,6 +351,16 @@ def kill_jupyters(instance):
     # UNFINISHED
 
 def display_instances(instances, region_name):
+    """
+    This is the core status table of lobot. It displays all available instances for the currently active region.
+    It will contain the following info:
+        - Instance ID and Name-tag (if available).
+        - State of the instance (stopped, stopping, starting, running).
+        - Type of the instance, its price per unit, and the unit.
+        - If started, the current uptime.
+        - Required private key to be available in the 'keys' folder.
+        - Instance's public IP adress.
+    """
     print("\n")
     if region_name is not None:
         try:
@@ -343,6 +392,11 @@ def display_instances(instances, region_name):
         print("\n\n")
 
 def change_type(instance, region_name, available_instances):
+    """
+    This creates a prompt to change the type of a given instance.
+    The available types can be changed in 'instance_types.cfg'.
+    If one is picked, the type of the instance is changed.
+    """
     assert(instance["State"] == "stopped")
     ec2 = boto3.client("ec2", region_name=region_name)
     choices = [k+" :: "+v for k, v in available_instances.items()]
@@ -356,6 +410,9 @@ def change_type(instance, region_name, available_instances):
     ec2.modify_instance_attribute(InstanceId=instance["InstanceId"], Attribute='instanceType', Value=chosen_type)
 
 def change_name(instance, region_name):
+    """
+    This creates a prompt for the new name-tag of an instance and changes the name when provided.
+    """
     ec2 = boto3.client("ec2", region_name)
     name_prompt = {
          'type': 'input',
@@ -379,6 +436,10 @@ def change_name(instance, region_name):
         time.sleep(0.5)
 
 def deploy(instance):
+    """
+    Takes all files from the 'deploy' folder in the the lobot directoy and uploads
+    them to the remote machines '~/lobot/deploy' folder.
+    """
     print("?")
     deploy_path = os.path.dirname(os.path.realpath(__file__))+"/deploy/"
     print("\nContent of \"deploy\" folder:")
@@ -411,6 +472,10 @@ def deploy(instance):
 
 
 def fetch(instance):
+    """
+    Fetches all files from '~/lobot/fetch' on the remote machine and puts
+    them in './fetch' on the local machine.
+    """
     fetch_path = os.path.dirname(os.path.realpath(__file__))+"/fetch/"
     key_name = instance["KeyName"]
     key_path = os.path.dirname(os.path.realpath(__file__))+"/keys/"+key_name+".pem"
@@ -442,18 +507,27 @@ def fetch(instance):
             raise ValueError("Key"+key_name+".pem is not available in my keys folder")
 
 def ask_instance(instances):
-        sorted_list = sorted(instances, key=lambda x: x["State"])
-        choices = [inst["InstanceId"]+" :: ("+inst["State"]+", "+inst["Name"]+")" for inst in sorted_list] + ["Change region", "Change username (SSH)"]
-        instance_prompt = {
-            'type': 'list',
-            'name': 'instance',
-            'message': 'Choose instance, change region, or change SSH username:',
-            'choices': choices
-        }
-        answer = prompt.prompt(instance_prompt)['instance'].split(" :: ")[0]
-        return answer
+    """
+    Creates the prompt for picking from the list of instances available in the current region.
+    """
+    sorted_list = sorted(instances, key=lambda x: x["State"])
+    choices = [inst["InstanceId"]+" :: ("+inst["State"]+", "+inst["Name"]+")" for inst in sorted_list] + ["Change region", "Change username (SSH)"]
+    instance_prompt = {
+        'type': 'list',
+        'name': 'instance',
+        'message': 'Choose instance, change region, or change SSH username:',
+        'choices': choices
+    }
+    answer = prompt.prompt(instance_prompt)['instance'].split(" :: ")[0]
+    return answer
 
 def change_region(current_region_name):
+    """
+    lobot always only works in one region.
+
+    This function creates a prompt to pick from all available regions and indicates the one
+    that is currently active.
+    """
     ec2 = boto3.client("ec2")
     known_regions = [region['RegionName'] for region in ec2.describe_regions()['Regions']]
     for region_idx, region_name in enumerate(known_regions):
@@ -472,6 +546,12 @@ def change_region(current_region_name):
     return chosen_region
 
 def detailed_info(instance, region_name):
+    """
+    Prints detailed info for a given instance, such as:
+        - used AMI
+        - Availability Zone
+        - Number of CPU cores
+    """
     ec2 = boto3.client("ec2", region_name=region_name)
     current_info = ec2.describe_instances(InstanceIds=[instance["InstanceId"]])["Reservations"][0]["Instances"][0]
     relevant_info = {}
