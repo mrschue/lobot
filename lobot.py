@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import json
-from PyInquirer import style_from_dict, Token, prompt
+from PyInquirer import style_from_dict, prompt
 from prettytable import PrettyTable
 import os
 import subprocess
@@ -222,7 +222,7 @@ def stop_instance(instance, region_name):
         'name': 'stop',
         'default': False,
     }
-    chosen_confirmation = prompt(confirm_prompt)["stop"]
+    chosen_confirmation = prompt.prompt(confirm_prompt)["stop"]
     if not chosen_confirmation:
         print(" ----> Canceling.")
         return 
@@ -278,7 +278,7 @@ def start_jupyter(instance, local_port=8889):
                     'message': 'Port '+str(local_port + one_up)+' available. Connect?',
                     'choices': output
                 }
-                jupyter_instance = prompt(server_prompt)["server"]
+                jupyter_instance = prompt.prompt(server_prompt)["server"]
                 remote_hostport = jupyter_instance.split("/")[2]
                 command = ["nohup", "ssh", "-i", key_path, "-N", "-L", str(local_port + one_up)+":"+remote_hostport, GLOBAL_CONFIG["aws_username"]+"@"+instance["PublicIpAddress"]]
                 process = subprocess.Popen(command, preexec_fn=os.setpgrp)
@@ -302,7 +302,7 @@ def change_remote_username():
          'message': 'Current username: '+GLOBAL_CONFIG["aws_username"]+'. Which username do you want use instead?',
          'choices': available_names
      }
-    chosen_name = prompt(username_prompt)["username"].split("  -  ")[0]
+    chosen_name = prompt.prompt(username_prompt)["username"].split("  -  ")[0]
     GLOBAL_CONFIG["aws_username"] = chosen_name
 
 
@@ -352,7 +352,7 @@ def change_type(instance, region_name, available_instances):
          'message': 'Current type: '+instance["InstanceType"]+'. Which type do you want instead?',
          'choices': choices
      }
-    chosen_type = prompt(type_prompt)["type"].split(" :: ")[0]
+    chosen_type = prompt.prompt(type_prompt)["type"].split(" :: ")[0]
     ec2.modify_instance_attribute(InstanceId=instance["InstanceId"], Attribute='instanceType', Value=chosen_type)
 
 def change_name(instance, region_name):
@@ -362,14 +362,14 @@ def change_name(instance, region_name):
          'name': 'instance_name',
          'message': 'Current name: '+instance["Name"]+'. Which name do you want instead?',
      }
-    chosen_name = prompt(name_prompt)["instance_name"]
+    chosen_name = prompt.prompt(name_prompt)["instance_name"]
     confirm_prompt =     {
         'type': 'confirm',
         'message': 'Do you want to change the name \"'+instance["Name"]+'\" to \"'+chosen_name+'\"?',
         'name': 'change_name',
         'default': False,
     }
-    chosen_confirmation = prompt(confirm_prompt)["change_name"]
+    chosen_confirmation = prompt.prompt(confirm_prompt)["change_name"]
     if not chosen_confirmation:
         print("-----------> Name was not changed.")
     else:
@@ -391,7 +391,7 @@ def deploy(instance):
         'name': 'deploy',
         'default': False,
     }
-    chosen_confirmation = prompt(confirm_prompt)["deploy"]
+    chosen_confirmation = prompt.prompt(confirm_prompt)["deploy"]
     if chosen_confirmation:
         if not os.path.exists(deploy_path):
             print("No \"deploy\" folder in the script's directory \""+os.path.dirname(os.path.realpath(__file__)))
@@ -430,7 +430,7 @@ def fetch(instance):
         'name': 'fetch',
         'default': False,
     }
-    chosen_confirmation = prompt(confirm_prompt)["fetch"]
+    chosen_confirmation = prompt.prompt(confirm_prompt)["fetch"]
     if chosen_confirmation:
         if not os.path.exists(fetch_path):
             print("No \"fetch\" folder in the script's directory \""+os.path.dirname(os.path.realpath(__file__)))
@@ -450,7 +450,7 @@ def ask_instance(instances):
             'message': 'Choose instance, change region, or change SSH username:',
             'choices': choices
         }
-        answer = prompt(instance_prompt)['instance'].split(" :: ")[0]
+        answer = prompt.prompt(instance_prompt)['instance'].split(" :: ")[0]
         return answer
 
 def change_region(current_region_name):
@@ -468,7 +468,7 @@ def change_region(current_region_name):
          'message': 'Current region: '+str(current_region_name)+'. Which region do you want instead?',
          'choices': known_regions
      }
-    chosen_region = prompt(region_prompt)['region'].split("  -  ")[0]
+    chosen_region = prompt.prompt(region_prompt)['region'].split("  -  ")[0]
     return chosen_region
 
 def detailed_info(instance, region_name):
@@ -560,7 +560,7 @@ if __name__ == "__main__":
                 options.append("Change name")
                 options.append("Change type")
             time.sleep(2)
-            chosen_action = prompt({'type':"list", "name":"action", "message": "What do you want to do?", "choices":options})["action"]
+            chosen_action = prompt.prompt({'type':"list", "name":"action", "message": "What do you want to do?", "choices":options})["action"]
             if chosen_action == "Start":
                 response = start_instance(chosen_instance, region_name=client_region_name)
             if chosen_action == "Stop":

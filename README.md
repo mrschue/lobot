@@ -23,8 +23,16 @@ You need the AWS CLI tools and some other dependencies. They can be conveniently
 ```
 pip install --user awscli
 pip install --user boto3
-pip install --user PyInquirer
 pip install --user prettytable
+pip install --user 'prompt_toolkit>=3.0.7'
+```
+
+Another requirement is *PyInquirer*. Unfortunately, there are currently some issues with the pip-version. 
+We recommend to install from github:
+```
+git clone https://github.com/CITGuru/PyInquirer.git
+cd PyInquirer
+pip install --user -e .
 ```
 
 Afterwards, you'll need to get your AWS access key and secret key. You can create
